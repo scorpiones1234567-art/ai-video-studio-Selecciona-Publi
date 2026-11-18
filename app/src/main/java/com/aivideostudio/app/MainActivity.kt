@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -24,6 +25,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 import kotlin.math.max
+import kotlin.math.sin
 
 @OptIn(UnstableApi::class)
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
@@ -50,15 +52,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
 
         val title = TextView(this).apply {
-            text = "🎬 AI Video Studio"
-            textSize = 28f
+            text = "🎬 STICKMAN VIDEO STUDIO"
+            textSize = 25f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
         }
         root.addView(title, LinearLayout.LayoutParams(-1, 70))
 
         val info = TextView(this).apply {
-            text = "Escribe tu historia y crea un video vertical con escenas de texto y narración en español. No necesitas subir imágenes."
+            text = "Escribe tu historia y crea un video animado con personajes Stickman, escenarios y narración en español."
             textSize = 15f
             setTextColor(0xFFB8BCC8.toInt())
             setPadding(0, 8, 0, 16)
@@ -66,7 +68,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         root.addView(info)
 
         script = EditText(this).apply {
-            hint = "Escribe aquí tu guion..."
+            hint = "Ejemplo: Un Stickman caminaba por el bosque y encontró un tesoro..."
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF8C919E.toInt())
             gravity = Gravity.TOP
@@ -77,7 +79,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         root.addView(script, LinearLayout.LayoutParams(-1, 0, 1f))
 
         createButton = Button(this).apply {
-            text = "🚀 CREAR VIDEO MP4"
+            text = "🚀 CREAR VIDEO STICKMAN"
             setOnClickListener { createVideo() }
         }
         root.addView(createButton)
@@ -97,8 +99,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (result == TextToSpeech.SUCCESS) {
             val languageResult = tts?.setLanguage(Locale("es", "MX"))
 
-            ttsReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
-                    languageResult != TextToSpeech.LANG_NOT_SUPPORTED
+            ttsReady =
+                languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                languageResult != TextToSpeech.LANG_NOT_SUPPORTED
 
             tts?.setOnUtteranceProgressListener(
                 object : UtteranceProgressListener() {
@@ -109,7 +112,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         runOnUiThread {
                             val audio = currentAudioFile
 
-                            if (audio != null && audio.exists() &&
+                            if (audio != null &&
+                                audio.exists() &&
                                 audio.length() > 100
                             ) {
                                 createVisualScenesAndExport(audio)
@@ -128,11 +132,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             )
 
             status.text = if (ttsReady) {
-                "Listo. Escribe tu guion."
+                "Listo. Escribe tu historia."
             } else {
                 "No está disponible la voz en español."
             }
-
         } else {
             status.text = "No se pudo iniciar el motor de voz."
         }
@@ -142,7 +145,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val text = script.text.toString().trim()
 
         if (text.isEmpty()) {
-            toast("Escribe un guion primero")
+            toast("Escribe una historia primero")
             return
         }
 
@@ -165,7 +168,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             text,
             Bundle(),
             audioFile,
-            "aivideo-${System.currentTimeMillis()}"
+            "stickman-${System.currentTimeMillis()}"
         )
 
         if (result != TextToSpeech.SUCCESS) {
@@ -207,7 +210,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 script.text.toString().trim()
             )
 
-            status.text = "Creando ${scenes.size} escenas..."
+            status.text = "Dibujando personajes Stickman..."
 
             val wordCount = script.text.toString()
                 .trim()
@@ -217,25 +220,33 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val totalMs = max(5000, wordCount * 400 + 1500)
             val perSceneMs = max(2500, totalMs / scenes.size)
 
-            val imageFiles = scenes.mapIndexed { index, scene ->
-                val imageFile = File(
-                    cacheDir,
-                    "scene_${System.currentTimeMillis()}_$index.png"
-                )
+            val frameCount = 8
+            val frameDuration = max(250, perSceneMs / frameCount)
 
-                drawScene(
-                    scene,
-                    index + 1,
-                    scenes.size,
-                    imageFile
-                )
+            val imageFiles = mutableListOf<File>()
 
-                imageFile
+            scenes.forEachIndexed { sceneIndex, scene ->
+                for (frame in 0 until frameCount) {
+                    val imageFile = File(
+                        cacheDir,
+                        "stickman_${System.currentTimeMillis()}_${sceneIndex}_$frame.png"
+                    )
+
+                    drawStickmanFrame(
+                        scene,
+                        sceneIndex + 1,
+                        scenes.size,
+                        frame,
+                        imageFile
+                    )
+
+                    imageFiles.add(imageFile)
+                }
             }
 
             exportComposition(
                 imageFiles,
-                perSceneMs,
+                frameDuration,
                 audioFile
             )
 
@@ -244,10 +255,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun drawScene(
-        text: String,
+    private fun drawStickmanFrame(
+        scene: String,
         sceneNumber: Int,
         totalScenes: Int,
+        frame: Int,
         file: File
     ) {
         val bitmap = Bitmap.createBitmap(
@@ -257,21 +269,229 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         )
 
         val canvas = Canvas(bitmap)
-        canvas.drawColor(0xFF111827.toInt())
+        val lower = scene.lowercase(Locale.ROOT)
 
-        val accent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF38BDF8.toInt()
-            strokeWidth = 12f
+        canvas.drawColor(0xFF9AD9F5.toInt())
+
+        val sun = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFD166.toInt()
+        }
+        canvas.drawCircle(880f, 260f, 105f, sun)
+
+        val cloud = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
         }
 
-        canvas.drawRoundRect(
-            90f, 250f, 990f, 265f,
-            8f, 8f, accent
+        canvas.drawCircle(210f, 300f, 65f, cloud)
+        canvas.drawCircle(280f, 270f, 85f, cloud)
+        canvas.drawCircle(355f, 305f, 60f, cloud)
+
+        val hill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF79B978.toInt()
+        }
+
+        canvas.drawOval(-180f, 1120f, 650f, 1580f, hill)
+        canvas.drawOval(400f, 1080f, 1300f, 1600f, hill)
+
+        val ground = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF4D8B54.toInt()
+        }
+
+        canvas.drawRect(0f, 1450f, 1080f, 1920f, ground)
+
+        val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF20242C.toInt()
+            strokeWidth = 22f
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+
+        // Bosque
+        if (listOf("bosque", "árbol", "arbol", "selva")
+            .any { lower.contains(it) }
+        ) {
+            for (x in listOf(120f, 900f)) {
+                canvas.drawLine(x, 1450f, x, 650f, dark)
+
+                val leaves = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFF28734A.toInt()
+                    style = Paint.Style.FILL
+                }
+
+                canvas.drawCircle(x, 600f, 180f, leaves)
+            }
+        }
+
+        // Casa
+        if (listOf("casa", "hogar", "puerta")
+            .any { lower.contains(it) }
+        ) {
+            val house = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFFFE0A3.toInt()
+            }
+
+            canvas.drawRect(690f, 900f, 1000f, 1450f, house)
+
+            val roof = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFB85C38.toInt()
+            }
+
+            val path = Path().apply {
+                moveTo(650f, 920f)
+                lineTo(845f, 700f)
+                lineTo(1040f, 920f)
+                close()
+            }
+
+            canvas.drawPath(path, roof)
+        }
+
+        // Tesoro
+        if (listOf("tesoro", "oro", "moneda")
+            .any { lower.contains(it) }
+        ) {
+            val gold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFFFD700.toInt()
+            }
+
+            canvas.drawRoundRect(
+                690f, 1260f, 900f, 1410f,
+                24f, 24f, gold
+            )
+
+            canvas.drawCircle(790f, 1210f, 72f, gold)
+        }
+
+        val running = listOf(
+            "corre", "corrió", "correr",
+            "persigue", "escapa", "huye"
+        ).any { lower.contains(it) }
+
+        val jumping = listOf(
+            "salta", "saltó", "brinca", "vuela"
+        ).any { lower.contains(it) }
+
+        val fighting = listOf(
+            "pelea", "pelear", "lucha",
+            "golpea", "monstruo", "ataca"
+        ).any { lower.contains(it) }
+
+        val phase = frame / 7f
+
+        val bob = if (jumping) {
+            -180f * kotlin.math.abs(
+                sin(phase * Math.PI)
+            ).toFloat()
+        } else {
+            0f
+        }
+
+        val stride = if (running || fighting) {
+            sin(frame * 0.9).toFloat() * 95f
+        } else {
+            sin(frame * 0.45).toFloat() * 24f
+        }
+
+        val moveX = if (running) frame * 24f else 0f
+        val cx = (360f + moveX).coerceAtMost(700f)
+        val cy = 1180f + bob
+
+        // Dibuja un personaje Stickman
+        fun stickPerson(
+            x: Float,
+            y: Float,
+            scale: Float,
+            arm: Float,
+            leg: Float,
+            color: Int
+        ) {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                strokeWidth = 24f * scale
+                strokeCap = Paint.Cap.ROUND
+                style = Paint.Style.STROKE
+            }
+
+            val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.FILL
+            }
+
+            // Cabeza
+            canvas.drawCircle(
+                x,
+                y - 235f * scale,
+                72f * scale,
+                p
+            )
+
+            // Cuerpo
+            canvas.drawLine(
+                x, y - 160f * scale,
+                x, y + 70f * scale, p
+            )
+
+            // Brazos
+            canvas.drawLine(
+                x, y - 90f * scale,
+                x - 105f * scale + arm,
+                y + 15f * scale, p
+            )
+
+            canvas.drawLine(
+                x, y - 90f * scale,
+                x + 105f * scale + arm,
+                y + 15f * scale, p
+            )
+
+            // Piernas
+            canvas.drawLine(
+                x, y + 70f * scale,
+                x - 95f * scale + leg,
+                y + 235f * scale, p
+            )
+
+            canvas.drawLine(
+                x, y + 70f * scale,
+                x + 95f * scale - leg,
+                y + 235f * scale, p
+            )
+
+            // Ojos
+            canvas.drawCircle(
+                x - 24f * scale,
+                y - 250f * scale,
+                8f * scale,
+                fill
+            )
+
+            canvas.drawCircle(
+                x + 24f * scale,
+                y - 250f * scale,
+                8f * scale,
+                fill
+            )
+        }
+
+        stickPerson(
+            cx, cy, 1.15f,
+            stride, -stride,
+            0xFF17191F.toInt()
         )
 
-        val smallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF93C5FD.toInt()
-            textSize = 38f
+        // Segundo personaje si hay pelea o monstruo
+        if (fighting) {
+            stickPerson(
+                790f, 1190f, 0.95f,
+                -stride, stride,
+                0xFF8B2635.toInt()
+            )
+        }
+
+        // Texto de la escena
+        val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF17212B.toInt()
+            textSize = 42f
             typeface = Typeface.create(
                 "sans-serif-medium",
                 Typeface.BOLD
@@ -279,52 +499,53 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             textAlign = Paint.Align.CENTER
         }
 
-        canvas.drawText(
-            "AI VIDEO STUDIO",
-            540f,
-            350f,
-            smallPaint
-        )
+        val lines = wrapText(scene, caption, 900f)
 
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFFFFFFF.toInt()
-            textSize = 72f
-            typeface = Typeface.create(
-                "sans-serif",
-                Typeface.BOLD
-            )
-            textAlign = Paint.Align.CENTER
+        val box = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xEEFFFFFF.toInt()
         }
 
-        val lines = wrapText(text, textPaint, 860f)
-        val lineHeight = 94f
-        val startY = 960f -
-                (lines.size - 1) * lineHeight / 2f
+        canvas.drawRoundRect(
+            55f, 70f, 1025f, 430f,
+            35f, 35f, box
+        )
 
-        lines.forEachIndexed { index, line ->
+        val lineHeight = 58f
+        val startY = 220f -
+            (lines.size - 1) * lineHeight / 2f
+
+        lines.take(5).forEachIndexed { index, line ->
             canvas.drawText(
                 line,
                 540f,
                 startY + index * lineHeight,
-                textPaint
+                caption
             )
         }
 
-        val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF9CA3AF.toInt()
+        val footer = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
             textSize = 34f
             textAlign = Paint.Align.CENTER
+            setShadowLayer(
+                5f, 2f, 2f,
+                0xFF000000.toInt()
+            )
         }
 
         canvas.drawText(
-            "ESCENA $sceneNumber / $totalScenes",
+            "STICKMAN • ESCENA $sceneNumber / $totalScenes",
             540f,
-            1660f,
-            footerPaint
+            1810f,
+            footer
         )
 
         FileOutputStream(file).use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            bitmap.compress(
+                Bitmap.CompressFormat.PNG,
+                90,
+                it
+            )
         }
 
         bitmap.recycle()
@@ -368,7 +589,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         audioFile: File
     ) {
         try {
-            status.text = "Montando video vertical 9:16..."
+            status.text = "Montando video Stickman..."
 
             val videoItems = imageFiles.map { file ->
                 val item = MediaItem.Builder()
@@ -412,7 +633,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             val outputFile = File(
                 cacheDir,
-                "final_${System.currentTimeMillis()}.mp4"
+                "stickman_${System.currentTimeMillis()}.mp4"
             )
 
             val transformer = Transformer.Builder(this)
@@ -434,7 +655,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     ) {
                         runOnUiThread {
                             fail(
-                                "Error al crear el video: ${exportException.message}"
+                                "Error al crear video: ${exportException.message}"
                             )
                         }
                     }
@@ -457,7 +678,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 val values = ContentValues().apply {
                     put(
                         MediaStore.Video.Media.DISPLAY_NAME,
-                        "AI_Video_Studio_${System.currentTimeMillis()}.mp4"
+                        "Stickman_${System.currentTimeMillis()}.mp4"
                     )
 
                     put(
@@ -468,10 +689,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     put(
                         MediaStore.Video.Media.RELATIVE_PATH,
                         Environment.DIRECTORY_MOVIES +
-                                "/AI Video Studio"
+                            "/AI Video Studio"
                     )
 
-                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                    put(
+                        MediaStore.Video.Media.IS_PENDING,
+                        1
+                    )
                 }
 
                 val uri = contentResolver.insert(
@@ -490,18 +714,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 )
 
                 values.clear()
-                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                values.put(
+                    MediaStore.Video.Media.IS_PENDING,
+                    0
+                )
 
                 contentResolver.update(uri, values, null, null)
 
                 status.text =
-                    "✅ ¡Video terminado! Está en Películas/AI Video Studio."
+                    "✅ Video terminado. Está en Películas/AI Video Studio."
 
                 createButton.isEnabled = true
 
             } catch (e: Exception) {
                 fail(
-                    "Video creado, pero no se pudo guardar: ${e.message}"
+                    "No se pudo guardar el video: ${e.message}"
                 )
             }
         }
