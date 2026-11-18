@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.aivideostudio.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.aivideostudio.app"
@@ -25,7 +26,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions { jvmTarget = "11" }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
 }
 
 dependencies {
